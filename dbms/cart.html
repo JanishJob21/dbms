@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery Store Billing System</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: Arial, sans-serif; }
+        h2 { color: #343a40; text-align: center; }
+        .container { margin-top: 50px; }
+        table th, table td { text-align: center; }
+        .btn { width: 100%; margin-top: 10px; }
+        .d-flex { flex-wrap: wrap; }
+        #clearCart, #checkout { width: 48%; }
+        @media (max-width: 768px) { #clearCart, #checkout { width: 100%; margin-bottom: 10px; } }
+        .modal-content { text-align: center; }
+        button {
+            padding: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+            border-radius: 4px;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+        .home-button {
+            background-color: #4CAF50;
+            margin-top: 10px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Grocery Store Billing System</h2>
+        <div class="row">
+            <div class="col-md-8">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Total</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody"></tbody>
+                </table>
+                <div class="d-flex justify-content-between">
+                    <button id="clearCart" class="btn btn-danger">Clear Cart</button>
+                    <button id="checkout" class="btn btn-success">Checkout</button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Cart Summary</h5>
+                        <p>Subtotal: $<span id="subtotal">0.00</span></p>
+                        <p>Tax (10%): $<span id="tax">0.00</span></p>
+                        <p>Total: $<span id="total">0.00</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <button class="home-button" onclick="window.location.href='index.html'">Back to Home</button>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Get user data from localStorage
+        const userData = JSON.parse(localStorage.getItem('userData'));
+        if (!userData || !userData.id) {
+            window.location.href = 'login.html';
+        }
+
+        // Load cart items
+        function loadCart() {
+            fetch(`/api/cart?user_id=${userData.id}`)
+            .then(response => response.json())
+            .then(data => {
+                if (Array.isArray(data)) {
+                    displayCart(data);
+                } else {
+                    alert('Failed to load cart: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to load cart');
+            });
+        }
+
+        // Display cart items
+        function displayCart(cartItems) {
+            const tableBody = document.getElementById('cartTableBody');
+            tableBody.innerHTML = '';
+            let subtotal = 0;
+
+            cartItems.forEach(item => {
+                const row = document.createElement('tr');
+                const itemTotal = item.price * item.quantity;
+                subtotal += itemTotal;
+
+                row.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>$${item.price.toFixed(2)}</td>
+                    <td>
+                        <input type="number" min="0" value="${item.quantity}" 
+                               onchange="updateQuantity(${item.id}, this.value)">
+                    </td>
+                    <td>$${itemTotal.toFixed(2)}</td>
+                    <td>
+                        <button onclick="removeItem(${item.id})" class="btn btn-danger btn-sm">Remove</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            updateTotals(subtotal);
+        }
+
+        // Update quantity
+        function updateQuantity(cartItemId, quantity) {
+            if (quantity <= 0) {
+                removeItem(cartItemId);
+                return;
+            }
+
+            fetch(`/api/cart/${cartItemId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    quantity: parseInt(quantity)
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    loadCart();
+                } else {
+                    alert('Failed to update cart: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to update cart');
+            });
+        }
+
+        // Remove item
+        function removeItem(cartItemId) {
+            fetch(`/api/cart/${cartItemId}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    loadCart();
+                } else {
+                    alert('Failed to remove item: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to remove item');
+            });
+        }
+
+        // Clear cart
+        document.getElementById('clearCart').addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear the cart?')) {
+                // Get all cart items and remove them one by one
+                fetch(`/api/cart?user_id=${userData.id}`)
+                .then(response => response.json())
+                .then(cartItems => {
+                    if (Array.isArray(cartItems)) {
+                        const deletePromises = cartItems.map(item => 
+                            fetch(`/api/cart/${item.id}`, { method: 'DELETE' })
+                        );
+                        Promise.all(deletePromises)
+                            .then(() => loadCart())
+                            .catch(error => {
+                                console.error('Error:', error);
+                                alert('Failed to clear cart');
+                            });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to clear cart');
+                });
+            }
+        });
+
+        // Update totals
+        function updateTotals(subtotal) {
+            const tax = subtotal * 0.1; // 10% tax
+            const total = subtotal + tax;
+
+            document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+            document.getElementById('tax').textContent = tax.toFixed(2);
+            document.getElementById('total').textContent = total.toFixed(2);
+        }
+
+        // Checkout
+        document.getElementById('checkout').addEventListener('click', function() {
+            // Implement checkout logic here
+            alert('Checkout functionality will be implemented here.');
+        });
+
+        // Load cart when page loads
+        loadCart();
+    </script>
+</body>
+</html>
